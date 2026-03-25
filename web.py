@@ -42,6 +42,8 @@ Improvements:
 Be honest, specific, and practical.
 Focus heavily on matching technical skills, tools, and job-related concepts.
 
+If it doesn't look like a job description or resume, return Not a job description or resume.
+
 Resume:
 {resume_text}
 
