@@ -66,7 +66,7 @@
                     return;
                 }
 
-                statusBox.textContent = `Done. Remaining free scans: ${data.remaining_scans}`;
+                statusBox.textContent = `Done. Remaining scans: ${data.remaining_scans}`;
                 outputBox.textContent = data.result;
 
                 if (data.remaining_scans <= 0) {
