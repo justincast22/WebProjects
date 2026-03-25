@@ -1,62 +1,84 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Resume Grader</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+    <div class="container">
+        <h1>AI Resume Grader</h1>
+        <p>Paste your resume and a job description to see how well they match.</p>
 
-<h1>AI Resume Grader</h1>
+        <label for="resume">Resume</label>
+        <textarea id="resume" placeholder="Paste your resume here..."></textarea>
 
-<textarea id="resume" placeholder="Paste resume here" rows="10" cols="60"></textarea>
-<br><br>
+        <label for="job">Job Description</label>
+        <textarea id="job" placeholder="Paste the job description here..."></textarea>
 
-<textarea id="job" placeholder="Paste job description here" rows="10" cols="60"></textarea>
-<br><br>
+        <button id="analyzeBtn">Analyze</button>
 
-<button onclick="analyzeResume()">Analyze</button>
+        <p id="status"></p>
+        <pre id="output"></pre>
+    </div>
 
-<p id="status"></p>
+    <script>
+        const analyzeBtn = document.getElementById("analyzeBtn");
+        const statusBox = document.getElementById("status");
+        const outputBox = document.getElementById("output");
 
-<pre id="output"></pre>
+        async function analyzeResume() {
+            const resume = document.getElementById("resume").value.trim();
+            const job = document.getElementById("job").value.trim();
 
-<script>
-async function analyzeResume() {
-    const resume = document.getElementById("resume").value;
-    const job = document.getElementById("job").value;
+            statusBox.textContent = "";
+            outputBox.textContent = "";
 
-    const status = document.getElementById("status");
-    const output = document.getElementById("output");
+            if (!resume || !job) {
+                statusBox.textContent = "Please fill in both boxes.";
+                return;
+            }
 
-    status.innerText = "Analyzing...";
-    output.innerText = "";
+            statusBox.textContent = "Analyzing...";
 
-    try {
-        const response = await fetch("/analyze", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                resume: resume,
-                job: job
-            })
-        });
+            try {
+                const response = await fetch("/analyze", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        resume: resume,
+                        job: job
+                    })
+                });
 
-        const data = await response.json();
+                const data = await response.json();
 
-        if (!response.ok) {
-            status.innerText = data.error;
-            return;
+                if (!response.ok) {
+                    statusBox.textContent = data.error || "Something went wrong.";
+
+                    if (response.status === 403) {
+                        analyzeBtn.disabled = true;
+                    }
+
+                    return;
+                }
+
+                statusBox.textContent = `Done. Remaining free scans: ${data.remaining_scans}`;
+                outputBox.textContent = data.result;
+
+                if (data.remaining_scans <= 0) {
+                    analyzeBtn.disabled = true;
+                }
+
+            } catch (error) {
+                statusBox.textContent = "Request failed. Check if Flask is running.";
+            }
         }
 
-        status.innerText = "Done. Remaining scans: " + data.remaining_scans;
-        output.innerText = data.result;
-
-    } catch (error) {
-        status.innerText = "Something went wrong.";
-    }
-}
-</script>
-
+        analyzeBtn.addEventListener("click", analyzeResume);
+    </script>
 </body>
 </html>

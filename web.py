@@ -3,16 +3,14 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 
-# Load .env file
 load_dotenv()
 
 app = Flask(__name__)
 
-# OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# 🔥 FREE LIMIT SYSTEM
-usage = {}  # stores usage per IP
+# Free scan tracking
+usage = {}
 FREE_LIMIT = 3
 
 
@@ -29,16 +27,20 @@ Match Score: <number from 0 to 100>
 Missing Keywords:
 - keyword 1
 - keyword 2
+- keyword 3
 
 Strengths:
 - strength 1
 - strength 2
+- strength 3
 
 Improvements:
 - improvement 1
 - improvement 2
+- improvement 3
 
-Be honest and specific.
+Be honest, specific, and practical.
+Focus heavily on matching technical skills, tools, and job-related concepts.
 
 Resume:
 {resume_text}
@@ -59,10 +61,10 @@ def analyze():
         user_ip = request.remote_addr
         current_uses = usage.get(user_ip, 0)
 
-        # 🚫 Check limit
+        # Hard stop after 3 successful scans
         if current_uses >= FREE_LIMIT:
             return jsonify({
-                "error": "You reached the free limit of 3 scans. Upgrade for unlimited access."
+                "error": "You have used all 3 free scans. More access is coming soon."
             }), 403
 
         data = request.get_json()
@@ -75,16 +77,14 @@ def analyze():
                 "error": "Please paste both the resume and the job description."
             }), 400
 
-        # 🔥 Build prompt
         prompt = build_prompt(resume_text, job_text)
 
-        # 🔥 Call OpenAI
         response = client.responses.create(
             model="gpt-5.4",
             input=prompt
         )
 
-        # ✅ Increment usage ONLY after success
+        # Count only after a successful OpenAI response
         usage[user_ip] = current_uses + 1
         remaining = FREE_LIMIT - usage[user_ip]
 
