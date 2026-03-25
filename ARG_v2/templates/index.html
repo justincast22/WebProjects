@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Resume Grader</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>AI Resume Grader</h1>
+        <p>Paste your resume and the job listing qualifications/job description.</p>
+
+        <label for="resume">Resume</label>
+        <textarea id="resume" placeholder="Paste your resume here..."></textarea>
+
+        <label for="job">Job Description / Qualifications</label>
+        <textarea id="job" placeholder="Paste the job listing here..."></textarea>
+
+        <button id="analyzeBtn">Analyze Resume</button>
+
+        <div id="status"></div>
+
+        <pre id="output"></pre>
+    </div>
+
+    <script>
+        const analyzeBtn = document.getElementById("analyzeBtn");
+        const output = document.getElementById("output");
+        const statusBox = document.getElementById("status");
+
+        analyzeBtn.addEventListener("click", async () => {
+            const resume = document.getElementById("resume").value.trim();
+            const job = document.getElementById("job").value.trim();
+
+            output.textContent = "";
+            statusBox.textContent = "";
+
+            if (!resume || !job) {
+                statusBox.textContent = "Please fill in both boxes.";
+                return;
+            }
+
+            statusBox.textContent = "Analyzing...";
+
+            try {
+                const response = await fetch("/analyze", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        resume: resume,
+                        job: job
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    statusBox.textContent = data.error || "Something went wrong.";
+                    return;
+                }
+
+                statusBox.textContent = "Done.";
+                output.textContent = data.result;
+            } catch (error) {
+                statusBox.textContent = "Request failed. Check if Flask is running.";
+            }
+        });
+    </script>
+</body>
+</html>
