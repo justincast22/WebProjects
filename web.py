@@ -42,7 +42,8 @@ Improvements:
 Be honest, specific, and practical.
 Focus heavily on matching technical skills, tools, and job-related concepts.
 
-If it doesn't look like a job description or resume, return Not a job description or resume.
+If it doesn't look like a job description or resume, return:
+Not a job description or resume.
 
 Resume:
 {resume_text}
@@ -60,16 +61,22 @@ def home():
 @app.route("/analyze", methods=["POST"])
 def analyze():
     try:
-        user_ip = request.remote_addr
+        user_ip = request.remote_addr or "unknown"
         current_uses = usage.get(user_ip, 0)
 
-        # Hard stop after 3 successful scans
+        # Stop after 3 successful scans
         if current_uses >= FREE_LIMIT:
             return jsonify({
-                "error": "You have used all 3 free scans. More access is coming soon."
+                "error": "You have used all 3 free scans. More access is coming soon.",
+                "remaining_scans": 0
             }), 403
 
         data = request.get_json()
+
+        if not data:
+            return jsonify({
+                "error": "Invalid request. No data received."
+            }), 400
 
         resume_text = data.get("resume", "").strip()
         job_text = data.get("job", "").strip()
@@ -86,12 +93,14 @@ def analyze():
             input=prompt
         )
 
-        # Count only after a successful OpenAI response
+        result_text = response.output_text.strip()
+
+        # Count only after successful OpenAI response
         usage[user_ip] = current_uses + 1
         remaining = FREE_LIMIT - usage[user_ip]
 
         return jsonify({
-            "result": response.output_text,
+            "result": result_text,
             "remaining_scans": remaining
         })
 

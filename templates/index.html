@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Resume Grader</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-<!-- Google tag (gtag.js) -->
+
+    <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-DCM285EB0T"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
@@ -49,6 +50,12 @@
                 return;
             }
 
+            // Track that the user submitted the form
+            gtag('event', 'resume_submitted', {
+                event_category: 'engagement',
+                event_label: 'Analyze Button Clicked'
+            });
+
             statusBox.textContent = "Analyzing...";
 
             try {
@@ -68,8 +75,20 @@
                 if (!response.ok) {
                     statusBox.textContent = data.error || "Something went wrong.";
 
+                    // Track failure event
+                    gtag('event', 'result_failed', {
+                        event_category: 'error',
+                        event_label: `Analyze Failed (${response.status})`
+                    });
+
                     if (response.status === 403) {
                         analyzeBtn.disabled = true;
+
+                        // Track scan limit reached
+                        gtag('event', 'limit_reached', {
+                            event_category: 'engagement',
+                            event_label: 'Free Scan Limit Reached'
+                        });
                     }
 
                     return;
@@ -78,12 +97,32 @@
                 statusBox.textContent = `Done. Remaining scans: ${data.remaining_scans}`;
                 outputBox.textContent = data.result;
 
+                // Track successful result generation
+                gtag('event', 'result_generated', {
+                    event_category: 'engagement',
+                    event_label: 'Resume Analysis Completed'
+                });
+
                 if (data.remaining_scans <= 0) {
                     analyzeBtn.disabled = true;
+
+                    // Track scan limit reached right after successful final scan
+                    gtag('event', 'limit_reached', {
+                        event_category: 'engagement',
+                        event_label: 'Free Scan Limit Reached After Success'
+                    });
                 }
 
             } catch (error) {
                 statusBox.textContent = "Request failed. Check if Flask is running.";
+
+                // Track fetch/network failure
+                gtag('event', 'result_failed', {
+                    event_category: 'error',
+                    event_label: 'Network or Fetch Error'
+                });
+
+                console.error(error);
             }
         }
 
