@@ -1,17 +1,43 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, make_response
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
+import sqlite3
+import uuid
+from datetime import datetime
 
 load_dotenv()
 
 app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-this")
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Free scan tracking
-usage = {}
 FREE_LIMIT = 3
+DB_FILE = "matchscore.db"
+
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db():
+    conn = get_db_connection()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS usage (
+            visitor_id TEXT PRIMARY KEY,
+            ip_address TEXT,
+            scans_used INTEGER NOT NULL DEFAULT 0,
+            last_used TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+init_db()
 
 
 def build_prompt(resume_text, job_text):
@@ -53,23 +79,109 @@ Job Description:
 """
 
 
+def get_or_create_visitor_id():
+    visitor_id = request.cookies.get("visitor_id")
+    if not visitor_id:
+        visitor_id = str(uuid.uuid4())
+    return visitor_id
+
+
+def get_usage(visitor_id):
+    conn = get_db_connection()
+    row = conn.execute(
+        "SELECT scans_used FROM usage WHERE visitor_id = ?",
+        (visitor_id,)
+    ).fetchone()
+    conn.close()
+
+    if row:
+        return row["scans_used"]
+    return 0
+
+
+def increment_usage(visitor_id, ip_address):
+    conn = get_db_connection()
+    current_time = datetime.utcnow().isoformat()
+
+    existing = conn.execute(
+        "SELECT scans_used FROM usage WHERE visitor_id = ?",
+        (visitor_id,)
+    ).fetchone()
+
+    if existing:
+        conn.execute(
+            """
+            UPDATE usage
+            SET scans_used = scans_used + 1,
+                ip_address = ?,
+                last_used = ?
+            WHERE visitor_id = ?
+            """,
+            (ip_address, current_time, visitor_id)
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO usage (visitor_id, ip_address, scans_used, last_used)
+            VALUES (?, ?, ?, ?)
+            """,
+            (visitor_id, ip_address, 1, current_time)
+        )
+
+    conn.commit()
+
+    updated = conn.execute(
+        "SELECT scans_used FROM usage WHERE visitor_id = ?",
+        (visitor_id,)
+    ).fetchone()
+
+    conn.close()
+    return updated["scans_used"]
+
+
 @app.route("/")
 def home():
-    return render_template("index.html")
+    visitor_id = get_or_create_visitor_id()
+    response = make_response(render_template("index.html"))
+
+    if not request.cookies.get("visitor_id"):
+        response.set_cookie(
+            "visitor_id",
+            visitor_id,
+            max_age=60 * 60 * 24 * 30,  # 30 days
+            httponly=True,
+            samesite="Lax",
+            secure=not app.debug
+        )
+
+    return response
 
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
     try:
-        user_ip = request.remote_addr or "unknown"
-        current_uses = usage.get(user_ip, 0)
+        visitor_id = get_or_create_visitor_id()
+        user_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
 
-        # Stop after 3 successful scans
+        current_uses = get_usage(visitor_id)
+
         if current_uses >= FREE_LIMIT:
-            return jsonify({
+            response = make_response(jsonify({
                 "error": "You have used all 3 free scans. More access is coming soon.",
                 "remaining_scans": 0
-            }), 403
+            }), 403)
+
+            if not request.cookies.get("visitor_id"):
+                response.set_cookie(
+                    "visitor_id",
+                    visitor_id,
+                    max_age=60 * 60 * 24 * 30,
+                    httponly=True,
+                    samesite="Lax",
+                    secure=not app.debug
+                )
+
+            return response
 
         data = request.get_json()
 
@@ -88,21 +200,32 @@ def analyze():
 
         prompt = build_prompt(resume_text, job_text)
 
-        response = client.responses.create(
+        response_openai = client.responses.create(
             model="gpt-5.4",
             input=prompt
         )
 
-        result_text = response.output_text.strip()
+        result_text = response_openai.output_text.strip()
 
-        # Count only after successful OpenAI response
-        usage[user_ip] = current_uses + 1
-        remaining = FREE_LIMIT - usage[user_ip]
+        new_total = increment_usage(visitor_id, user_ip)
+        remaining = max(FREE_LIMIT - new_total, 0)
 
-        return jsonify({
+        response = make_response(jsonify({
             "result": result_text,
             "remaining_scans": remaining
-        })
+        }))
+
+        if not request.cookies.get("visitor_id"):
+            response.set_cookie(
+                "visitor_id",
+                visitor_id,
+                max_age=60 * 60 * 24 * 30,
+                httponly=True,
+                samesite="Lax",
+                secure=not app.debug
+            )
+
+        return response
 
     except Exception as e:
         return jsonify({
